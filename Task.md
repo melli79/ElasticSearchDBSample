@@ -38,10 +38,10 @@ Also create a directory src/main/java/com/dlr where you put a minimal DLRAdmin.j
 ```
 package com.dlr;
 
-import java.annotation.Nonnull
+import javax.annotation.Nonnull;
 
 public class DLRAdmin {
-    publis static void main(@Nonnull String... args) {
+    public static void main(@Nonnull String... args) {
         
     }
 }
