@@ -107,8 +107,89 @@ It may be useful to gather the output of the importer in a log file and to check
 ## Part 2: Writing a frontend for querying the Database
 ### Components
 We will use the following program to write the client:
-* AngularJS 9 (https://angular.io/tutorial) (downloads via the node command)
+* AngularJS 6.0/Node.js 10.0 (https://angular.io/tutorial) (downloads via the node commands npm/ng)
 * as an IDE you could use intelliJ idea as well (with the AngularJS plugin)
 * Apache web server to deliver the client to external browsers.
+* recent browser with java script support (e.g. Chrome, Firefox, Edge)
 
 ### Step 1: Setting up the project
+Install and update the node.js command line tools:
+```nmp install "@angular/cli"```
+
+Then you create a new angularJS project by executing ```ng create webclient``` where ''webclient'' is the name of the project.  You can now open this project in your favorite java script/ type script editor, e.g. IntelliJ Idea with angularJS plugin.  Open the file src/app/app.component.ts and in the defined class introduce the two readonly variables title and version.  You may set the latter to something like 0.1.0 as this is just the initialization of the project.  Then edit the file src/app/app.component.ts and replace the angular placeholder with something like
+```<h1>{{title}}</h1>``` and maybe a copyright notice and ```{{version}}```.
+
+### Step 2: Setting up the user interface
+On the command line run the command ```ng generate module search```.  Once the generation is complete, you can modify the '''src/app/app.component.html''' to include the newly created module: ```<app-component></app-component>```.
+
+In the file '''src/app/search/search.component.ts''' define a (public) variable types of type MappingType[] with initial value null. Then create a new file '''src/app/mappingType.ts''' in which you define the '''export interface''' MappingType with the fields '''readonly''' ''name'' of type '''string''', ''desc''? of type '''string''' and fields of type ColumnType[].  This looks as follows:
+```
+  '''export interface''' MappingType {
+    '''readonly''' name :'''string''';
+    desc? :'''string''';
+    fields :ColumnType[];
+  }
+```
+
+Create a new file '''src/app/columnType.ts''' and define the '''export interface''' ColumnType with the fields '''readonly''' ''id'' of type '''string''', ''label''? of type '''string''' and ''desc''? of type '''string'''.  Now return to the file '''src/app/MappingType.ts''' and trigger an autocomplete on the unknown type ColumnType (this should ```import {ColumnType} from './columnType';```).
+
+Return to the file '''src/app/search/search.component.ts''' and trigger an autocomplete on the unknown MappingType.  Add to the function ''ngOnInit()'' a line to initialize the ''types'' variable with a list of one MappingType of ''name'' 'airrsgtc' and columns {'_id', 'uniqueID'}, {'sensor0'}, {'utcstarttime0'}.
+
+Add more variables to the class: ''selectedType'' of MappingType with initial value '''null''' and ''selectedColumns'' of ColumnType[] and initial value '''null'''.
+
+Now open the file ''src/app/search/search.component.html'' and add the structure for selecting a MappingType to query:  A good initial choice would be a ```<form>``` with a ```<select *ngIf="types" data-ng-model="selectedType">``` a default option ```<option>&lt;Choose a MappingType&gt;</option>``` and generated options ```"let t of types"``` with ```value="t"``` and description ```{{t.name}}```.  This should look as follows:
+```
+  <form>
+    <select *ngIf="types" data-ng-model="selectedType">
+      <option>&lt;Choose a MappingType&gt;</option>
+      <option *ngFor="let t of types" value="t">{{t.name}}</option>
+    <select>
+    <button type="button" (click)="loadData()">Load</button>
+  </form>
+```
+Here we have added a button to load the table for the selected MappingType.  Make sure you specify the ```type="button"``` otherwise your app will reload whenever you click this button (```type="submit"```, the default behavior).
+
+Define a method ''loadData() :void'' in the class (*.ts file), but leave it empty for now.
+
+You can test the web client by running ```ng serve``` and poiting your browser to 'http://localhost:4200/'.
+
+### Step 3: Setting up the elasticSearch service
+Run the command ```ng generate service ElasticSearch``` which creates a file ''src/app/elasticSearch.service.ts'' and registers the service in the ''src/app/app.module.ts''.  Open this file and add to imports the HttpClientModule.  Click autocomplete on the unknown type HttpClientModule and it should add the ```import { HttpClientModule } from '@angular/common/http';```
+
+Now open the previously generated file ''src/app/elasticSearch.service.ts'' and add a '''private''' argument ''httpClient'' of type HttpClient to the constructor.  Press autocomplete on HttpClient to add the ```import { HttpClient } from '@angular/common/http';```  Now add a private variable ''url'' of value ```'http://localhost:9200/dlr/'```.  This will be the web access to the ElasticSearch database.
+
+Create a (public) method ''query'' with parameters ''selectedType'' of MappingType, ''page'' of default value 0, and page size of default value 20.  The method just returns an http-query as follows:  Call ```httpClient.get<QueryResult<ResultType> >(this.url+selectedType.name+'/_search?from='+page*size+'&size='+size)```  Click autocomplete on the unknown type QueryResult and generate a local type definition as:
+```
+  interface QueryResult<T> {
+    took: number;
+    timed_out: boolean;
+    _shards: {
+      total: number,
+      successful: number,
+      skipped: number,
+      failed: number
+    };
+    hits: {
+      total: number,
+      max_score: number,
+      hits: T[]
+    };
+  }
+```
+
+Create a new file ''src/app/abstractType.ts'' and define '''exported interface''' AbstractType which has a variable ''_id'' of type '''string''' and [''name'' :string] of type any.  Define furthermore '''exported interface''' ResultType which '''extends''' AbstractType and adds the fields ''_index'', ''_type'' and ''_score'' of type '''string''' and
+''_source'' of type '''Object'''.
+
+Now return to the file ''src/app/elasticSearch.service.ts'' and click autocomplete on the unknown type ResultType.  This should add the ```import { ResultType } from '../abstractType.ts;```  Add a ```,AbstractType``` here to also import this type.
+
+You will notice that the return statement is red underlined.  The reason is that the return type of the query is not the return type of the ''query'' method.  We will fix this by ```.pipe()```ing the result through a ```map()```.  The mapping expression is:
+```
+   result => {
+     result.hits.hits = result.hits.hits.map(entry => {
+       const item = entry._source as ResultType;
+       item['_id'] = entry._id;
+       return item;
+     });
+     return result as QueryResult<AbstractType>;
+   }
+```
